@@ -73,7 +73,8 @@ function Home() {
     // Special videos
     'special video': 'Ilx_xJHuhAc',
     'gaming music': '5qap5aO4i9A', // Lofi hip hop radio
-    'game on song': 'KQ6zr6kCPj8' // Gaming music mix
+    'game on song': 'KQ6zr6kCPj8', // Gaming music mix
+    'game on': 'KQ6zr6kCPj8' // Gaming music mix for general game on requests
   };
 
   const scrollToBottom = () => {
@@ -107,7 +108,7 @@ function Home() {
       }
       
       // If no voices available, set up the voiceschanged listener immediately
-      console.warn('No voices available initially, setting up voiceschanged listener');
+      console.debug('No voices available initially, setting up voiceschanged listener');
       const handleVoicesChanged = () => {
         const availableVoices = window.speechSynthesis.getVoices();
         if (availableVoices.length > 0 && !voicesLoaded) {
@@ -282,7 +283,7 @@ function Home() {
         // Show the termination prompt message
         const terminationMessage = {
           id: Date.now(),
-          text: "Please write your name so I can assist you.",
+          text: "Please write My name so I can assist you.",
           sender: 'ai',
           timestamp: new Date().toLocaleTimeString(),
           type: 'system'
@@ -409,6 +410,17 @@ function Home() {
         setIsListening(false);
         if (event.error === 'not-allowed') {
           addAiMessage("Please allow microphone access when prompted by your browser.", 'error');
+          // Show the microphone access prompt again
+          setTimeout(() => {
+            if (isLanguageSelected && recognitionRef.current && !isListening) {
+              try {
+                recognitionRef.current.start();
+                setIsListening(true);
+              } catch (e) {
+                console.error('Error restarting recognition after not-allowed error:', e);
+              }
+            }
+          }, 2000);
         } else if (event.error === 'no-speech') {
           console.debug('No speech detected, continuing to listen');
           // Don't show a message for this, just continue listening
@@ -481,20 +493,24 @@ function Home() {
 
   // Additional effect to ensure voices are loaded when component mounts
   useEffect(() => {
+    let voicesLoaded = false;
+    
     const loadVoicesOnMount = () => {
       // Try to get voices multiple times as they may not be immediately available
       const voices = window.speechSynthesis.getVoices();
-      if (voices.length > 0 && !isSpeechAllowed) {  // Only update if not already set
+      if (voices.length > 0 && !voicesLoaded) {  // Only update if not already set
         setVoices(voices);
         setIsSpeechAllowed(true);
+        voicesLoaded = true;
         return true; // Indicate success
-      } else if (voices.length === 0 && !isSpeechAllowed) {
+      } else if (voices.length === 0 && !voicesLoaded) {
         // Set up listener for when voices become available
         window.speechSynthesis.onvoiceschanged = () => {
           const availableVoices = window.speechSynthesis.getVoices();
-          if (availableVoices.length > 0 && !isSpeechAllowed) {
+          if (availableVoices.length > 0 && !voicesLoaded) {
             setVoices(availableVoices);
             setIsSpeechAllowed(true);
+            voicesLoaded = true;
             window.speechSynthesis.onvoiceschanged = undefined;
             return true; // Indicate success
           }
@@ -517,20 +533,32 @@ function Home() {
     // Additional backup: Check if voices are loaded after a longer delay
     setTimeout(() => {
       const voices = window.speechSynthesis.getVoices();
-      if (voices.length > 0 && !isSpeechAllowed) {
+      if (voices.length > 0 && !voicesLoaded) {
         setVoices(voices);
         setIsSpeechAllowed(true);
+        voicesLoaded = true;
       }
     }, 3000); // 3 seconds delay as final backup
     
     // Final backup after 5 seconds
     setTimeout(() => {
       const voices = window.speechSynthesis.getVoices();
-      if (voices.length > 0 && !isSpeechAllowed) {
+      if (voices.length > 0 && !voicesLoaded) {
         setVoices(voices);
         setIsSpeechAllowed(true);
+        voicesLoaded = true;
       }
     }, 5000); // 5 seconds delay as ultimate backup
+    
+    // Even more persistent backup after 8 seconds
+    setTimeout(() => {
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0 && !voicesLoaded) {
+        setVoices(voices);
+        setIsSpeechAllowed(true);
+        voicesLoaded = true;
+      }
+    }, 8000); // 8 seconds delay as extra backup
   }, []);
 
   const speakText = (text, lang = selectedLanguage) => {
@@ -538,14 +566,14 @@ function Home() {
       console.warn('Speech synthesis not available in this browser');
       return;
     }
-
+  
     // Use the state voices instead of getting from API directly
     const currentVoices = availableVoices.length > 0 ? availableVoices : window.speechSynthesis.getVoices();
-    
+      
     if (currentVoices.length === 0) {
       // Voices may still be loading, set up a callback
       console.debug('No voices available, setting up voiceschanged listener');
-      
+        
       // Create a more robust voiceschanged handler
       const handleVoicesChanged = () => {
         // Retry speaking after voices are loaded
@@ -554,13 +582,13 @@ function Home() {
           if (retryVoices.length > 0) {
             // Update state with loaded voices
             setVoices(retryVoices);
-            
+              
             // Create a new utterance with the loaded voices
             const retryUtterance = new SpeechSynthesisUtterance(text);
             const langCode = lang === 'hi' ? 'hi-IN' : lang === 'mr' ? 'mr-IN' :
                             lang === 'es' ? 'es-ES' : lang === 'fr' ? 'fr-FR' : 'en-US';
             retryUtterance.lang = langCode;
-
+  
             let retryVoice = retryVoices.find(v => {
               const isCorrectLang = v.lang.startsWith(langCode.split('-')[0]);
               if (selectedVoice === 'male') {
@@ -568,39 +596,39 @@ function Home() {
                        v.name.includes('David') ||
                        v.name.includes('Google हिन्दी') ||
                        v.name.includes('Rishi') ||
-                       v.name.includes('Microsoft'));
+                       v.name.includes('Microsoft')); 
               } else {
                 return isCorrectLang && (v.name.toLowerCase().includes('female') ||
                        v.name.includes('Zira') ||
                        v.name.includes('Google US English') ||
                        v.name.includes('Kalpana') ||
-                       v.name.includes('Microsoft'));
+                       v.name.includes('Microsoft')); 
               }
             });
-
+  
             if (!retryVoice && retryVoices.length > 0) {
               retryVoice = retryVoices[0]; // Fallback to first available voice
             }
-            
+              
             if (retryVoice) retryUtterance.voice = retryVoice;
             retryUtterance.rate = Math.max(0.1, Math.min(10, userPreferences.voiceSpeed));
             retryUtterance.pitch = 1;
             retryUtterance.volume = 1;
-            
+              
             // Only speak if no speech is currently happening
             if (!window.speechSynthesis.speaking) {
               window.speechSynthesis.speak(retryUtterance);
             }
-            
+              
             // Clean up the listener after successful speech
             window.speechSynthesis.onvoiceschanged = null;
           }
         }, 100);
       };
-      
+        
       // Set the handler
       window.speechSynthesis.onvoiceschanged = handleVoicesChanged;
-      
+        
       // Also try again after a brief moment in case voices load quickly
       setTimeout(() => {
         const voices = window.speechSynthesis.getVoices();
@@ -609,16 +637,16 @@ function Home() {
           handleVoicesChanged();
         }
       }, 50);
-      
+        
       return;
     }
-
+  
     // Prevent interrupting ongoing speech when it's the same message
     if (window.speechSynthesis.speaking && speechSynthesisRef.current.utterance && speechSynthesisRef.current.utterance.text === text) {
       // Same message is already being spoken, don't interrupt
       return;
     }
-    
+      
     // Only speak if no speech is currently happening
     if (window.speechSynthesis.speaking) {
       // Don't cancel ongoing speech unless it's for a critical message
@@ -626,13 +654,13 @@ function Home() {
       console.debug('Speech already in progress, skipping new message');
       return;
     }
-
+  
     try {
       const utterance = new SpeechSynthesisUtterance(text);
       const langCode = lang === 'hi' ? 'hi-IN' : lang === 'mr' ? 'mr-IN' :
                       lang === 'es' ? 'es-ES' : lang === 'fr' ? 'fr-FR' : 'en-US';
       utterance.lang = langCode;
-
+  
       // Use available voices
       let voice = currentVoices.find(v => {
         const isCorrectLang = v.lang.startsWith(langCode.split('-')[0]);
@@ -641,41 +669,41 @@ function Home() {
                  v.name.includes('David') ||
                  v.name.includes('Google हिन्दी') ||
                  v.name.includes('Rishi') ||
-                 v.name.includes('Microsoft'));
+                 v.name.includes('Microsoft')); 
         } else {
           return isCorrectLang && (v.name.toLowerCase().includes('female') ||
                  v.name.includes('Zira') ||
                  v.name.includes('Google US English') ||
                  v.name.includes('Kalpana') ||
-                 v.name.includes('Microsoft'));
+                 v.name.includes('Microsoft')); 
         }
       });
-
+  
       if (!voice && currentVoices.length > 0) {
         voice = currentVoices[0]; // Fallback to first available voice
       }
-      
+        
       if (voice) utterance.voice = voice;
-
+  
       utterance.rate = Math.max(0.1, Math.min(10, userPreferences.voiceSpeed));
       utterance.pitch = 1;
       utterance.volume = 1;
-
+  
       utterance.onstart = () => {
         setIsSpeaking(true);
         speechSynthesisRef.current.isSpeaking = true;
       };
-      
+        
       utterance.onend = () => {
         setIsSpeaking(false);
         speechSynthesisRef.current.isSpeaking = false;
       };
-      
+        
       utterance.onerror = (event) => {
         console.error('Speech synthesis error:', event);
         setIsSpeaking(false);
         speechSynthesisRef.current.isSpeaking = false;
-        
+          
         // Handle specific errors
         if (event.error === 'interrupted' || event.error === 'canceled') {
           console.debug('Speech was interrupted or cancelled');
@@ -685,10 +713,10 @@ function Home() {
           addAiMessage("Speech synthesis not allowed. Please check browser permissions.", 'system');
         }
       };
-
+  
       // Store reference
       speechSynthesisRef.current.utterance = utterance;
-      
+        
       // Add small delay to prevent race conditions
       setTimeout(() => {
         try {
@@ -701,7 +729,7 @@ function Home() {
           setIsSpeaking(false);
         }
       }, 50); // Reduced delay
-
+  
     } catch (error) {
       console.error('Error creating speech utterance:', error);
       setIsSpeaking(false);
@@ -1007,13 +1035,14 @@ function Home() {
                            (normalized.includes(name) && (normalized.includes('open') || normalized.includes('launch')));
       
       // Special handling for YouTube since it can be both an app and a video player
-      if (name === 'youtube' && (isOpenCommand || normalized.includes('youtube'))) {
+      if (name === 'youtube') {
         // Check if it's a general 'open youtube' request vs a video request
         const isVideoRequest = normalized.includes('play') || 
                               normalized.includes('video') || 
                               normalized.includes('song') || 
                               normalized.includes('music') || 
-                              normalized.includes('watch');
+                              normalized.includes('watch') ||
+                              normalized.includes('game on');
         
         if (!isVideoRequest) {
           // This is just an 'open youtube' request
@@ -1026,6 +1055,14 @@ function Home() {
           addAiMessage(response, 'app');
           speakTextIfAllowed(response, selectedLanguage);
           saveToHistory(processedUserText, response);
+          return;
+        } else {
+          // This is a video request, handle separately
+          console.log(`YouTube video command detected: ${processedUserText}`);
+          const result = handleYouTubeRequest(processedUserText);
+          addAiMessage(result.response, 'youtube');
+          speakTextIfAllowed(result.response, selectedLanguage);
+          saveToHistory(processedUserText, result.response);
           return;
         }
       } else if (isOpenCommand) {
@@ -1050,7 +1087,8 @@ function Home() {
         normalized.includes('video') ||
         normalized.includes('song') ||
         normalized.includes('music') ||
-        normalized.includes('watch')) &&
+        normalized.includes('watch') ||
+        normalized.includes('game on')) &&
         !normalized.includes('open youtube') && !normalized.includes('launch youtube')) {
       console.log(`YouTube command detected: ${processedUserText}`);
       const result = handleYouTubeRequest(processedUserText);
@@ -1091,8 +1129,8 @@ function Home() {
       }
     }
 
-    // Quick commands
-    if (normalized === 'time' || normalized.includes('what time')) {
+    // Quick commands - TIME AND DATE CHECKS FIRST (more comprehensive)
+    if (normalized.includes('time') || normalized.includes('what time') || normalized.includes('current time') || normalized.includes('time in india') || normalized.includes('what is the time')) {
       const time = new Date().toLocaleTimeString();
       const response = `Current time is ${time}, Sir.`;
       addAiMessage(response, 'response');
@@ -1101,7 +1139,7 @@ function Home() {
       return;
     }
 
-    if (normalized === 'date' || normalized.includes('what date')) {
+    if (normalized.includes('date') || normalized.includes('what date') || normalized.includes('current date') || normalized.includes('what is the date') || normalized.includes('today date')) {
       const date = new Date().toLocaleDateString();
       const response = `Today's date is ${date}, Sir.`;
       addAiMessage(response, 'response');
@@ -1163,7 +1201,7 @@ function Home() {
     if (canSpeak) {
       // For error messages or critical notifications, we should interrupt
       const isErrorMessage = text.toLowerCase().includes('error') || 
-                          text.toLowerCase().includes('pemission') ||
+                          text.toLowerCase().includes('permission') ||
                           text.toLowerCase().includes('allow') ||
                           text.toLowerCase().includes('failed');
       
@@ -1839,7 +1877,7 @@ function Home() {
                             if (!recognitionRef.current) {
                               const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
                               recognitionRef.current = new SpeechRecognition();
-                              
+                                                
                               const langMap = {
                                 'hi': 'hi-IN',
                                 'mr': 'mr-IN',
@@ -1848,26 +1886,49 @@ function Home() {
                                 'en': 'en-US'
                               };
                               recognitionRef.current.lang = langMap[selectedLanguage] || 'en-US';
-                              recognitionRef.current.continuous = false;
+                              recognitionRef.current.continuous = false; // Temporarily set to false for button press
                               recognitionRef.current.interimResults = false;
-                              
+                                                
                               recognitionRef.current.onresult = (event) => {
                                 const transcript = event.results[0][0].transcript;
                                 console.log('Recognized:', transcript);
                                 handleUserMessage(transcript);
                                 setIsListening(false); // Reset listening state after processing
                               };
-                              
+                                                
                               recognitionRef.current.onend = () => {
                                 console.log('Speech recognition ended');
                                 setIsListening(false);
+                                                  
+                                // If this was a button-activated recognition, try to start continuous recognition again
+                                if (isLanguageSelected && recognitionRef.current && !isListening) {
+                                  setTimeout(() => {
+                                    try {
+                                      recognitionRef.current.continuous = true; // Set back to continuous for background listening
+                                      recognitionRef.current.start();
+                                      setIsListening(true);
+                                      console.log('Continuous speech recognition restarted after button press');
+                                    } catch (restartError) {
+                                      console.error('Error restarting continuous recognition:', restartError);
+                                    }
+                                  }, 1000);
+                                }
                               };
-                              
+                                                
                               recognitionRef.current.onerror = (event) => {
                                 console.error('Speech recognition error:', event.error);
                                 setIsListening(false);
                                 if (event.error === 'not-allowed') {
                                   addAiMessage("Microphone access denied. Please allow microphone permissions in your browser settings.", 'error');
+                                  // Prompt user again to allow microphone access
+                                  setTimeout(() => {
+                                    try {
+                                      recognitionRef.current.start();
+                                      setIsListening(true);
+                                    } catch (retryError) {
+                                      console.error('Error retrying microphone access:', retryError);
+                                    }
+                                  }, 2000);
                                 } else if (event.error === 'no-speech') {
                                   addAiMessage("No speech detected. Please try again.", 'system');
                                 } else if (event.error === 'audio-capture') {
@@ -1885,11 +1946,12 @@ function Home() {
                                 }
                               };
                             }
-                            
+                                              
                             // Request microphone access with a user gesture
+                            recognitionRef.current.continuous = false; // Set to false for button press
                             recognitionRef.current.start();
                             setIsListening(true);
-                            
+                                              
                             // Add a small delay to ensure the mic permission prompt appears
                             setTimeout(() => {
                               if (!isListening) {

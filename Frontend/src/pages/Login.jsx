@@ -13,16 +13,19 @@ function Login() {
   const [voices, setVoices] = useState([]);
 
   useEffect(() => {
+    let voicesLoaded = false;
+    
     // Check speech synthesis availability
     const checkSpeechSupport = () => {
       if ('speechSynthesis' in window) {
         const loadVoices = () => {
           const availableVoices = window.speechSynthesis.getVoices();
-          if (availableVoices.length > 0) {
+          if (availableVoices.length > 0 && !voicesLoaded) {
             setVoices(availableVoices);
             setIsSpeechAllowed(true);
-            // Welcome message - start with guest/login options first
-            speakText("Welcome to login page, you can login and continue as a guest. Please do not use your personal Gmail and password, this is for only demo purpose. You can continue with random Gmail ID and password that is safe. I am here to guide or else assist you. This professional Website is made by Krishna Patil Rajput.");
+            voicesLoaded = true;
+            // Professional welcome message with disclaimer
+            speakText("Welcome to login page sir, I would like to assist you. Please you can sign in or continue as a guest. Do not use your personal Gmail and password. You can use random Gmail password also. This professional Website is made by Krishna Patil Rajput. You can visit the website only from login page.");
             // Remove the listener after successful load
             window.speechSynthesis.onvoiceschanged = null;
             return true; // Indicate that voices were loaded
@@ -31,10 +34,10 @@ function Login() {
         };
         
         // Try to load voices immediately
-        let voicesLoaded = loadVoices();
+        let immediateLoad = loadVoices();
         
         // Set up listener if voices are not loaded yet
-        if (!voicesLoaded) {
+        if (!immediateLoad && !voicesLoaded) {
           // Create a more robust voiceschanged listener
           const voicesChangedHandler = () => {
             const success = loadVoices();
@@ -50,7 +53,7 @@ function Login() {
           // Use a more systematic approach with exponential backoff
           for (let i = 1; i <= 20; i++) {
             setTimeout(() => {
-              if (!isSpeechAllowed) {
+              if (!voicesLoaded) {
                 const success = loadVoices();
                 if (success) {
                   window.speechSynthesis.onvoiceschanged = null;
@@ -61,7 +64,7 @@ function Login() {
           
           // Final backup after 3 seconds
           setTimeout(() => {
-            if (!isSpeechAllowed) {
+            if (!voicesLoaded) {
               loadVoices();
             }
           }, 3000);
@@ -113,8 +116,50 @@ function Login() {
   }, []);
 
   const speakText = (text) => {
-    if (!('speechSynthesis' in window) || voices.length === 0) return;
+    if (!('speechSynthesis' in window)) return;
 
+    // Use available voices or try to get them
+    const currentVoices = voices.length > 0 ? voices : window.speechSynthesis.getVoices();
+    
+    if (currentVoices.length === 0) {
+      // Voices may still be loading, set up a callback
+      console.debug('No voices available in Login, setting up voiceschanged listener');
+      
+      const handleVoicesChanged = () => {
+        const retryVoices = window.speechSynthesis.getVoices();
+        if (retryVoices.length > 0) {
+          const retryUtterance = new SpeechSynthesisUtterance(text);
+          retryUtterance.lang = 'en-US';
+          
+          const retryVoice = retryVoices.find(v => v.lang.startsWith('en') && 
+            (v.name.includes('Female') || v.name.includes('Zira') || v.name.includes('Google'))) || retryVoices[0];
+          
+          if (retryVoice) retryUtterance.voice = retryVoice;
+          retryUtterance.rate = 1.0;
+          retryUtterance.volume = 1;
+          
+          if (!window.speechSynthesis.speaking) {
+            window.speechSynthesis.speak(retryUtterance);
+          }
+          
+          window.speechSynthesis.onvoiceschanged = null;
+        }
+      };
+      
+      window.speechSynthesis.onvoiceschanged = handleVoicesChanged;
+      
+      // Also try again after a brief moment in case voices load quickly
+      setTimeout(() => {
+        const voices = window.speechSynthesis.getVoices();
+        if (voices.length > 0) {
+          handleVoicesChanged();
+        }
+      }, 50);
+      
+      return;
+    }
+
+    // Only speak if no speech is currently happening
     if (window.speechSynthesis.speaking) {
       window.speechSynthesis.cancel();
     }
@@ -123,8 +168,8 @@ function Login() {
     utterance.lang = 'en-US';
     
     // Try to find a good voice
-    const voice = voices.find(v => v.lang.startsWith('en') && 
-      (v.name.includes('Female') || v.name.includes('Zira') || v.name.includes('Google'))) || voices[0];
+    const voice = currentVoices.find(v => v.lang.startsWith('en') && 
+      (v.name.includes('Female') || v.name.includes('Zira') || v.name.includes('Google'))) || currentVoices[0];
     
     if (voice) utterance.voice = voice;
     utterance.rate = 1.0;
@@ -187,6 +232,14 @@ function Login() {
             KRISHNA's AI
           </h1>
           <p className="text-gray-400 text-sm mt-2">Please sign in to continue</p>
+          <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-500/30 rounded-xl">
+            <p className="text-yellow-300 text-xs font-medium text-center">
+              ⚠️ Disclaimer: Do not use personal Gmail and password. Use random credentials for demo purposes only.
+            </p>
+            <p className="text-yellow-400 text-xs text-center mt-1">
+              Professional Website by Krishna Patil Rajput
+            </p>
+          </div>
         </div>
 
         {!isGuest ? (

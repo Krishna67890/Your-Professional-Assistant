@@ -107,7 +107,7 @@ function UserContext({ children }) {
       setUserData(response.data);
       setIsLoading(false);
     } catch (error) {
-      console.error("Error fetching current user:", error);
+      // Silent handling of backend connection errors - expected when server is offline
       
       // Check if it's a connection error (backend not running)
       if (error.code === 'ECONNREFUSED' || error.message.includes('Network Error') || error.response?.status === 0) {

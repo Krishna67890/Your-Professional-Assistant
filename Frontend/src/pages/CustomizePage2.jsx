@@ -10,21 +10,24 @@ function CustomizePage2() {
   const [voices, setVoices] = useState([]);
 
   useEffect(() => {
+    let voicesLoaded = false;
+    
     // Check speech synthesis availability
     const checkSpeechSupport = () => {
       if ('speechSynthesis' in window) {
         const loadVoices = () => {
           const availableVoices = window.speechSynthesis.getVoices();
-          if (availableVoices.length > 0) {
+          if (availableVoices.length > 0 && !voicesLoaded) {
             setVoices(availableVoices);
             setIsSpeechAllowed(true);
+            voicesLoaded = true;
             // Welcome message for customization page 2
             speakText("Welcome to the second step of customization. Please enter the name for your AI assistant, then press the Finish button.");
           }
         };
         
         loadVoices();
-        if (voices.length === 0) {
+        if (voices.length === 0 && !voicesLoaded) {
           window.speechSynthesis.onvoiceschanged = loadVoices;
         }
       }
@@ -74,8 +77,50 @@ function CustomizePage2() {
   }, []);
 
   const speakText = (text) => {
-    if (!('speechSynthesis' in window) || voices.length === 0) return;
+    if (!('speechSynthesis' in window)) return;
 
+    // Use available voices or try to get them
+    const currentVoices = voices.length > 0 ? voices : window.speechSynthesis.getVoices();
+    
+    if (currentVoices.length === 0) {
+      // Voices may still be loading, set up a callback
+      console.debug('No voices available in CustomizePage2, setting up voiceschanged listener');
+      
+      const handleVoicesChanged = () => {
+        const retryVoices = window.speechSynthesis.getVoices();
+        if (retryVoices.length > 0) {
+          const retryUtterance = new SpeechSynthesisUtterance(text);
+          retryUtterance.lang = 'en-US';
+          
+          const retryVoice = retryVoices.find(v => v.lang.startsWith('en') && 
+            (v.name.includes('Female') || v.name.includes('Zira') || v.name.includes('Google'))) || retryVoices[0];
+          
+          if (retryVoice) retryUtterance.voice = retryVoice;
+          retryUtterance.rate = 1.0;
+          retryUtterance.volume = 1;
+          
+          if (!window.speechSynthesis.speaking) {
+            window.speechSynthesis.speak(retryUtterance);
+          }
+          
+          window.speechSynthesis.onvoiceschanged = null;
+        }
+      };
+      
+      window.speechSynthesis.onvoiceschanged = handleVoicesChanged;
+      
+      // Also try again after a brief moment in case voices load quickly
+      setTimeout(() => {
+        const voices = window.speechSynthesis.getVoices();
+        if (voices.length > 0) {
+          handleVoicesChanged();
+        }
+      }, 50);
+      
+      return;
+    }
+
+    // Only speak if no speech is currently happening
     if (window.speechSynthesis.speaking) {
       window.speechSynthesis.cancel();
     }
@@ -83,8 +128,8 @@ function CustomizePage2() {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'en-US';
     
-    const voice = voices.find(v => v.lang.startsWith('en') && 
-      (v.name.includes('Female') || v.name.includes('Zira') || v.name.includes('Google'))) || voices[0];
+    const voice = currentVoices.find(v => v.lang.startsWith('en') && 
+      (v.name.includes('Female') || v.name.includes('Zira') || v.name.includes('Google'))) || currentVoices[0];
     
     if (voice) utterance.voice = voice;
     utterance.rate = 1.0;
