@@ -45,6 +45,7 @@ function Home() {
     isSpeaking: false,
     utterance: null
   });
+  const hasGreetedRef = useRef(false);
 
   const languages = {
     'en': { name: 'English', greeting: 'Hello Sir! I am ready to assist you.' },
@@ -274,7 +275,8 @@ function Home() {
 
   // System greeting on refresh
   useEffect(() => {
-    if (isLanguageSelected) {
+    // Use a ref to track if the greeting has already been shown
+    if (isLanguageSelected && !hasGreetedRef.current) {
       // Check if this is a new session after termination
       if (!userData || !userData?.assistantName) {
         // Show the termination prompt message
@@ -287,6 +289,7 @@ function Home() {
         };
         
         setMessages([terminationMessage]);
+        hasGreetedRef.current = true;
         
         // Only speak if speech is allowed
         if (isSpeechAllowed) {
@@ -309,6 +312,7 @@ function Home() {
         // Only add to messages if it's truly a new session (empty messages)
         if (messages.length === 0) {
           setMessages([initialMessage]);
+          hasGreetedRef.current = true;
         }
         
         // Only speak if speech is allowed
@@ -357,26 +361,50 @@ function Home() {
       recognitionRef.current.onend = () => {
         console.log('Speech recognition ended');
         setIsListening(false);
-        // Restart recognition if continuous mode is enabled
-        setTimeout(() => {
-          if (isLanguageSelected && recognitionRef.current) {
+        // Restart recognition if continuous mode is enabled and language is selected
+        if (isLanguageSelected && recognitionRef.current && !isListening) {
+          setTimeout(() => {
             try {
               recognitionRef.current.start();
               setIsListening(true);
+              console.log('Speech recognition restarted');
             } catch (e) {
               console.error('Error restarting speech recognition:', e);
+              // If there's an error, try again after a longer delay
+              setTimeout(() => {
+                try {
+                  if (isLanguageSelected && recognitionRef.current && !isListening) {
+                    recognitionRef.current.start();
+                    setIsListening(true);
+                  }
+                } catch (retryError) {
+                  console.error('Retry failed to restart speech recognition:', retryError);
+                }
+              }, 3000);
             }
-          }
-        }, 1000); // Restart after 1 second
+          }, 1000); // Restart after 1 second
+        }
       };
       
       recognitionRef.current.onerror = (event) => {
         console.error('Speech recognition error:', event.error);
         setIsListening(false);
         if (event.error === 'not-allowed') {
-          addAiMessage("Microphone access denied. Please allow microphone permissions in your browser settings.", 'error');
+          addAiMessage("Please allow microphone access when prompted by your browser.", 'error');
         } else if (event.error === 'no-speech') {
-          addAiMessage("No speech detected. Please try again.", 'system');
+          console.debug('No speech detected, continuing to listen');
+          // Don't show a message for this, just continue listening
+          // Restart recognition after a short delay
+          setTimeout(() => {
+            if (isLanguageSelected && recognitionRef.current && !isListening) {
+              try {
+                recognitionRef.current.start();
+                setIsListening(true);
+              } catch (e) {
+                console.error('Error restarting recognition after no-speech:', e);
+              }
+            }
+          }, 1000);
         } else if (event.error === 'audio-capture') {
           addAiMessage("Audio capture failed. Please check your microphone.", 'error');
         } else if (event.error === 'network') {
@@ -466,7 +494,9 @@ function Home() {
     if (currentVoices.length === 0) {
       // Voices may still be loading, set up a callback
       console.debug('No voices available, setting up voiceschanged listener');
-      window.speechSynthesis.onvoiceschanged = () => {
+      
+      // Create a more robust voiceschanged handler
+      const handleVoicesChanged = () => {
         // Retry speaking after voices are loaded
         setTimeout(() => {
           const retryVoices = window.speechSynthesis.getVoices();
@@ -512,10 +542,25 @@ function Home() {
             }
             
             window.speechSynthesis.speak(retryUtterance);
+            
+            // Clean up the listener after successful speech
+            window.speechSynthesis.onvoiceschanged = null;
           }
         }, 100);
-        window.speechSynthesis.onvoiceschanged = undefined;
       };
+      
+      // Set the handler
+      window.speechSynthesis.onvoiceschanged = handleVoicesChanged;
+      
+      // Also try again after a brief moment in case voices load quickly
+      setTimeout(() => {
+        const voices = window.speechSynthesis.getVoices();
+        if (voices.length > 0) {
+          // If voices loaded quickly, use them directly
+          handleVoicesChanged();
+        }
+      }, 50);
+      
       return;
     }
 
@@ -575,7 +620,7 @@ function Home() {
         
         // Handle specific errors
         if (event.error === 'interrupted' || event.error === 'canceled') {
-          console.log('Speech was interrupted or cancelled');
+          console.debug('Speech was interrupted or cancelled');
         } else if (event.error === 'not-allowed') {
           console.warn('Speech synthesis not allowed by browser');
           setIsSpeechAllowed(false);
@@ -597,7 +642,7 @@ function Home() {
           console.error('Error starting speech synthesis:', error);
           setIsSpeaking(false);
         }
-      }, 100);
+      }, 50); // Reduced delay
 
     } catch (error) {
       console.error('Error creating speech utterance:', error);
@@ -822,13 +867,57 @@ function Home() {
     return response;
   };
 
-  const handleUserMessage = async (userText) => {
-    if (!userText.trim() || !isLanguageSelected) return;
+  const handleUserMessage = async (originalUserText) => {
+    if (!originalUserText.trim() || !isLanguageSelected) return;
 
-    const normalized = userText.toLowerCase().trim();
+    // Check if this is the initial naming after termination
+    if (!userData?.assistantName && messages.some(msg => msg.text.includes("Please write your name so I can assist you"))) {
+      // User has provided their name, so initialize the assistant
+      const name = originalUserText.trim();
+      const updatedData = { ...userData, assistantName: name, isGuest: true };
+      setUserData(updatedData);
+
+      const response = `Protocol initiated. My designation is now confirmed as ${name}. I am at your service, Sir. How may I help you?`;
+      addAiMessage(response, 'system');
+      speakTextIfAllowed(response, selectedLanguage);
+      saveToHistory(originalUserText, response);
+      return;
+    }
+
+    // Process AI name extraction
+    let processedUserText = originalUserText;
+    const aiName = (userData?.assistantName || 'AI').toLowerCase();
+    const originalNormalized = originalUserText.toLowerCase().trim();
+    
+    // Check if user is calling the AI - also handle commands that start with the AI name
+    if (originalNormalized === aiName || originalNormalized.includes(`hey ${aiName}`) || originalNormalized.includes(`hello ${aiName}`) || originalNormalized.startsWith(`${aiName} `) || originalNormalized.startsWith(`${aiName},`)) {
+      // Extract the actual command if the message starts with the AI name
+      let commandText = originalUserText;
+      let shouldProcessCommand = false;
+      
+      if (originalNormalized.startsWith(`${aiName} `) || originalNormalized.startsWith(`${aiName},`)) {
+        commandText = originalUserText.substring(aiName.length + 1).trim();
+        shouldProcessCommand = true;
+      }
+      
+      // If it's just the AI name being called, respond
+      if (originalNormalized === aiName || originalNormalized.includes(`hey ${aiName}`) || originalNormalized.includes(`hello ${aiName}`)) {
+        const response = `Yes Sir? ${userData?.assistantName} is online and ready.`;
+        addAiMessage(response, 'response');
+        speakTextIfAllowed(response, selectedLanguage);
+        saveToHistory(originalUserText, response);
+        return;
+      } else if (shouldProcessCommand) {
+        // Process the command that came after the AI name
+        console.log(`Processing command after AI name: ${commandText}`);
+        processedUserText = commandText;
+      }
+    }
+    
+    const normalized = processedUserText.toLowerCase().trim();
     const userMessage = {
       id: Date.now(),
-      text: userText,
+      text: processedUserText,
       sender: 'user',
       timestamp: new Date().toLocaleTimeString(),
       type: 'user'
@@ -836,49 +925,6 @@ function Home() {
 
     setMessages(prev => [...prev, userMessage]);
     setInputText('');
-
-    // Check if this is the initial naming after termination
-    if (!userData?.assistantName && messages.some(msg => msg.text.includes("Please write your name so I can assist you"))) {
-      // User has provided their name, so initialize the assistant
-      const name = userText.trim();
-      const updatedData = { ...userData, assistantName: name, isGuest: true };
-      setUserData(updatedData);
-
-      const response = `Protocol initiated. My designation is now confirmed as ${name}. I am at your service, Sir. How may I help you?`;
-      addAiMessage(response, 'system');
-      speakTextIfAllowed(response, selectedLanguage);
-      saveToHistory(userText, response);
-      return;
-    }
-
-    const aiName = (userData?.assistantName || 'AI').toLowerCase();
-
-    // Check if user is calling the AI - also handle commands that start with the AI name
-    if (normalized === aiName || normalized.includes(`hey ${aiName}`) || normalized.includes(`hello ${aiName}`) || normalized.startsWith(`${aiName} `) || normalized.startsWith(`${aiName},`)) {
-      // Extract the actual command if the message starts with the AI name
-      let commandText = userText;
-      let shouldProcessCommand = false;
-      
-      if (normalized.startsWith(`${aiName} `) || normalized.startsWith(`${aiName},`)) {
-        commandText = userText.substring(aiName.length + 1).trim();
-        shouldProcessCommand = true;
-      }
-      
-      // If it's just the AI name being called, respond
-      if (normalized === aiName || normalized.includes(`hey ${aiName}`) || normalized.includes(`hello ${aiName}`)) {
-        const response = `Yes Sir? ${userData?.assistantName} is online and ready.`;
-        addAiMessage(response, 'response');
-        speakTextIfAllowed(response, selectedLanguage);
-        saveToHistory(userText, response);
-        return;
-      } else if (shouldProcessCommand) {
-        // Process the command that came after the AI name
-        console.log(`Processing command after AI name: ${commandText}`);
-        // Update userText and normalized to the extracted command
-        userText = commandText;
-        normalized = commandText.toLowerCase().trim();
-      }
-    }
 
     // App opening - Check this BEFORE YouTube/Video requests to avoid conflicts
     const apps = {
@@ -897,8 +943,36 @@ function Home() {
     };
 
     for (const [name, url] of Object.entries(apps)) {
-      if (normalized.includes(`open ${name}`) || normalized.includes(`launch ${name}`) || normalized.includes(name) && (normalized.includes('open') || normalized.includes('launch'))) {
-        console.log(`Opening ${name} app via voice command: ${userText}`);
+      // Enhanced detection for opening apps
+      const isOpenCommand = normalized.includes(`open ${name}`) || 
+                           normalized.includes(`launch ${name}`) || 
+                           (normalized.includes(name) && (normalized.includes('open') || normalized.includes('launch')));
+      
+      // Special handling for YouTube since it can be both an app and a video player
+      if (name === 'youtube' && (isOpenCommand || normalized.includes('youtube'))) {
+        // Check if it's a general 'open youtube' request vs a video request
+        const isVideoRequest = normalized.includes('play') || 
+                              normalized.includes('video') || 
+                              normalized.includes('song') || 
+                              normalized.includes('music') || 
+                              normalized.includes('watch');
+        
+        if (!isVideoRequest) {
+          // This is just an 'open youtube' request
+          console.log(`Opening YouTube app via voice command: ${processedUserText}`);
+          const newWindow = window.open(url, '_blank');
+          if (!newWindow) {
+            addAiMessage("Popup blocked. Please check your browser settings.", 'system');
+          }
+          const response = `Opening YouTube for you, Sir.`;
+          addAiMessage(response, 'app');
+          speakTextIfAllowed(response, selectedLanguage);
+          saveToHistory(processedUserText, response);
+          return;
+        }
+      } else if (isOpenCommand) {
+        // Handle other apps
+        console.log(`Opening ${name} app via voice command: ${processedUserText}`);
         const newWindow = window.open(url, '_blank');
         if (!newWindow) {
           addAiMessage("Popup blocked. Please check your browser settings.", 'system');
@@ -906,7 +980,7 @@ function Home() {
         const response = `Opening ${name.charAt(0).toUpperCase() + name.slice(1)} for you, Sir.`;
         addAiMessage(response, 'app');
         speakTextIfAllowed(response, selectedLanguage);
-        saveToHistory(userText, response);
+        saveToHistory(processedUserText, response);
         return;
       }
     }
@@ -920,11 +994,11 @@ function Home() {
         normalized.includes('music') ||
         normalized.includes('watch')) &&
         !normalized.includes('open youtube') && !normalized.includes('launch youtube')) {
-      console.log(`YouTube command detected: ${userText}`);
-      const result = handleYouTubeRequest(userText);
+      console.log(`YouTube command detected: ${processedUserText}`);
+      const result = handleYouTubeRequest(processedUserText);
       addAiMessage(result.response, 'youtube');
       speakTextIfAllowed(result.response, selectedLanguage);
-      saveToHistory(userText, result.response);
+      saveToHistory(processedUserText, result.response);
       return;
     }
 
@@ -937,7 +1011,7 @@ function Home() {
         normalized.includes('where is') ||
         normalized.includes('tell me about') ||
         normalized.includes('open google')) {
-      console.log(`Google search command detected: ${userText}`);
+      console.log(`Google search command detected: ${processedUserText}`);
 
       let query = normalized
         .replace('search google for', '')
@@ -954,7 +1028,7 @@ function Home() {
         const response = handleGoogleSearch(query);
         addAiMessage(response, 'search');
         speakTextIfAllowed(response, selectedLanguage);
-        saveToHistory(userText, response);
+        saveToHistory(processedUserText, response);
         return;
       }
     }
@@ -965,7 +1039,7 @@ function Home() {
       const response = `Current time is ${time}, Sir.`;
       addAiMessage(response, 'response');
       speakTextIfAllowed(response, selectedLanguage);
-      saveToHistory(userText, response);
+      saveToHistory(processedUserText, response);
       return;
     }
 
@@ -974,7 +1048,7 @@ function Home() {
       const response = `Today's date is ${date}, Sir.`;
       addAiMessage(response, 'response');
       speakTextIfAllowed(response, selectedLanguage);
-      saveToHistory(userText, response);
+      saveToHistory(processedUserText, response);
       return;
     }
 
@@ -995,12 +1069,12 @@ function Home() {
       const contextPrompt = `User is speaking in ${languages[selectedLanguage].name}.
       Location: ${userData?.state || 'Unknown'}, ${userData?.country || 'Global'}.
       Be respectful and helpful. User is "Sir".
-      Query: ${userText}`;
+      Query: ${processedUserText}`;
 
       const response = await getGeminiResponse(contextPrompt, userData?.assistantName || 'AI Assistant');
       addAiMessage(response, 'ai');
       speakTextIfAllowed(response, selectedLanguage);
-      saveToHistory(userText, response);
+      saveToHistory(processedUserText, response);
     } catch (error) {
       console.error('Gemini API Error:', error);
       const errorMsg = "I apologize, but I'm having trouble processing your request. Please try again or check your connection.";
@@ -1097,6 +1171,9 @@ function Home() {
     
     // Clear any stored guest data
     localStorage.removeItem('guestUserData');
+    
+    // Reset the greeting flag so it shows again when user returns
+    hasGreetedRef.current = false;
     
     // Speak termination message if speech is allowed
     if (isSpeechAllowed && availableVoices.length > 0) {
