@@ -22,7 +22,7 @@ function Login() {
             setVoices(availableVoices);
             setIsSpeechAllowed(true);
             // Welcome message - start with guest/login options first
-            speakText("Welcome to our advanced AI-powered platform, Sir! You can securely login with your account or continue as guest. This professional assistant is designed to provide seamless interaction and support. I am a Professional Assistant developed by Krishna Patil Rajput, Sir! Please choose your preferred access method.");
+            speakText("Welcome to login page, you can login and continue as a guest. Please do not use your personal Gmail and password, this is for only demo purpose. You can continue with random Gmail ID and password that is safe. I am here to guide or else assist you. This professional Website is made by Krishna Patil Rajput.");
             // Remove the listener after successful load
             window.speechSynthesis.onvoiceschanged = null;
             return true; // Indicate that voices were loaded

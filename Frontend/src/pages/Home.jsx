@@ -343,19 +343,31 @@ function Home() {
         'en': 'en-US'
       };
       recognitionRef.current.lang = langMap[selectedLanguage] || 'en-US';
-      recognitionRef.current.continuous = false;
+      recognitionRef.current.continuous = true;
       recognitionRef.current.interimResults = false;
 
       recognitionRef.current.onresult = (event) => {
         const transcript = event.results[0][0].transcript;
         console.log('Recognized:', transcript);
         handleUserMessage(transcript);
-        setIsListening(false); // Reset listening state after processing
+        // Don't reset listening state immediately since continuous = true
+        // setIsListening(false); // Reset listening state after processing
       };
 
       recognitionRef.current.onend = () => {
         console.log('Speech recognition ended');
         setIsListening(false);
+        // Restart recognition if continuous mode is enabled
+        setTimeout(() => {
+          if (isLanguageSelected && recognitionRef.current) {
+            try {
+              recognitionRef.current.start();
+              setIsListening(true);
+            } catch (e) {
+              console.error('Error restarting speech recognition:', e);
+            }
+          }
+        }, 1000); // Restart after 1 second
       };
       
       recognitionRef.current.onerror = (event) => {
@@ -841,13 +853,31 @@ function Home() {
 
     const aiName = (userData?.assistantName || 'AI').toLowerCase();
 
-    // Check if user is calling the AI
-    if (normalized === aiName || normalized.includes(`hey ${aiName}`) || normalized.includes(`hello ${aiName}`)) {
-      const response = `Yes Sir? ${userData?.assistantName} is online and ready.`;
-      addAiMessage(response, 'response');
-      speakTextIfAllowed(response, selectedLanguage);
-      saveToHistory(userText, response);
-      return;
+    // Check if user is calling the AI - also handle commands that start with the AI name
+    if (normalized === aiName || normalized.includes(`hey ${aiName}`) || normalized.includes(`hello ${aiName}`) || normalized.startsWith(`${aiName} `) || normalized.startsWith(`${aiName},`)) {
+      // Extract the actual command if the message starts with the AI name
+      let commandText = userText;
+      let shouldProcessCommand = false;
+      
+      if (normalized.startsWith(`${aiName} `) || normalized.startsWith(`${aiName},`)) {
+        commandText = userText.substring(aiName.length + 1).trim();
+        shouldProcessCommand = true;
+      }
+      
+      // If it's just the AI name being called, respond
+      if (normalized === aiName || normalized.includes(`hey ${aiName}`) || normalized.includes(`hello ${aiName}`)) {
+        const response = `Yes Sir? ${userData?.assistantName} is online and ready.`;
+        addAiMessage(response, 'response');
+        speakTextIfAllowed(response, selectedLanguage);
+        saveToHistory(userText, response);
+        return;
+      } else if (shouldProcessCommand) {
+        // Process the command that came after the AI name
+        console.log(`Processing command after AI name: ${commandText}`);
+        // Update userText and normalized to the extracted command
+        userText = commandText;
+        normalized = commandText.toLowerCase().trim();
+      }
     }
 
     // App opening - Check this BEFORE YouTube/Video requests to avoid conflicts
