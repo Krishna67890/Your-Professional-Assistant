@@ -74,7 +74,10 @@ function Home() {
     'special video': 'Ilx_xJHuhAc',
     'gaming music': '5qap5aO4i9A', // Lofi hip hop radio
     'game on song': 'KQ6zr6kCPj8', // Gaming music mix
-    'game on': 'KQ6zr6kCPj8' // Gaming music mix for general game on requests
+    'game on': 'Ilx_xJHuhAc', // Game on song - https://youtu.be/Ilx_xJHuhAc?list=RDIlx_xJHuhAc
+    'pal pal': '8of5w7RgcTc', // Pal pal song - https://youtu.be/8of5w7RgcTc?list=RD8of5w7RgcTc
+    'life': 'Be_IPqZFdhs', // Life song - https://youtu.be/Be_IPqZFdhs?list=RDBe_IPqZFdhs
+    'yalgaar': 'zzwRbKI2pn4' // YalGaar song - https://youtu.be/zzwRbKI2pn4?list=RDzzwRbKI2pn4
   };
 
   const scrollToBottom = () => {
@@ -833,28 +836,63 @@ function Home() {
       const keywordLower = keyword.toLowerCase();
       if (cleanedText.includes(keywordLower) || 
           normalized.includes(keywordLower)) {
-        // Direct video play
-        const youtubeUrl = videoId.startsWith('UC')
-          ? `https://www.youtube.com/channel/${videoId}`
-          : `https://www.youtube.com/watch?v=${videoId}`;
-
-        // Open in new tab
-        const newWindow = window.open(youtubeUrl, '_blank');
-        if (!newWindow) {
-          // If popup blocked, inform user
-          addAiMessage("YouTube blocked popup. Please check your browser settings or click the link manually.", 'system');
-        }
-
-        let response;
-        if (keyword.includes('techno gamerz')) {
-          response = "Playing Techno Gamerz gaming music, Sir. Enjoy the beats! Opening in new tab...";
-        } else if (keyword.includes('game on song')) {
-          response = "Playing gaming music mix, Sir. Perfect for your gaming sessions! Opening in new tab...";
+        // Check if user wants Spotify instead of YouTube
+        if (normalized.includes('on spotify') || normalized.includes('from spotify')) {
+          // Play on Spotify instead
+          let spotifyTrackId = '';
+          if (keywordLower.includes('pal pal')) {
+            spotifyTrackId = '2B8KZdmZqmmkTU3rK5w02O';
+          } else if (keywordLower.includes('game on')) {
+            spotifyTrackId = '5Ch0kN2Yq9kq6C18uBPfbq';
+          } else if (keywordLower.includes('life')) {
+            spotifyTrackId = '23x6WgYKq918Y60Yx51q29';
+          } else if (keywordLower.includes('yalgaar')) {
+            spotifyTrackId = '0l2aJ7JZq3Qq3YGhGFs8N8';
+          } else {
+            // For other keywords, use a general search approach
+            const encodedQuery = encodeURIComponent(keyword);
+            const spotifyUrl = `https://open.spotify.com/search/${encodedQuery}`;
+            const newWindow = window.open(spotifyUrl, '_blank');
+            if (!newWindow) {
+              addAiMessage("Spotify blocked popup. Please check your browser settings or click the link manually.", 'system');
+            }
+            const response = `Searching Spotify for ${keyword}, Sir. Opening in new tab...`;
+            return { type: 'direct', response, query: keyword };
+          }
+          
+          if (spotifyTrackId) {
+            const spotifyUrl = `https://open.spotify.com/track/${spotifyTrackId}`;
+            const newWindow = window.open(spotifyUrl, '_blank');
+            if (!newWindow) {
+              addAiMessage("Spotify blocked popup. Please check your browser settings or click the link manually.", 'system');
+            }
+            const response = `Playing ${keyword} on Spotify, Sir. Enjoy the music! Opening in new tab...`;
+            return { type: 'direct', response, query: keyword };
+          }
         } else {
-          response = `Playing ${keyword}, Sir. Opening in new tab...`;
-        }
+          // Direct video play on YouTube
+          const youtubeUrl = videoId.startsWith('UC')
+            ? `https://www.youtube.com/channel/${videoId}`
+            : `https://www.youtube.com/watch?v=${videoId}`;
 
-        return { type: 'direct', response, query: keyword };
+          // Open in new tab
+          const newWindow = window.open(youtubeUrl, '_blank');
+          if (!newWindow) {
+            // If popup blocked, inform user
+            addAiMessage("YouTube blocked popup. Please check your browser settings or click the link manually.", 'system');
+          }
+
+          let response;
+          if (keyword.includes('techno gamerz')) {
+            response = "Playing Techno Gamerz gaming music, Sir. Enjoy the beats! Opening in new tab...";
+          } else if (keyword.includes('game on song')) {
+            response = "Playing gaming music mix, Sir. Perfect for your gaming sessions! Opening in new tab...";
+          } else {
+            response = `Playing ${keyword}, Sir. Opening in new tab...`;
+          }
+
+          return { type: 'direct', response, query: keyword };
+        }
       }
     }
     
@@ -953,6 +991,81 @@ function Home() {
     return response;
   };
 
+  // Enhanced Spotify handler
+  const handleSpotifyRequest = (userText) => {
+    const normalized = userText.toLowerCase().trim();
+    let searchQuery = '';
+
+    // Remove common phrases
+    let cleanedText = normalized
+      .replace('play a song', '')
+      .replace('play song', '')
+      .replace('on spotify', '')
+      .replace('spotify', '')
+      .replace('please', '')
+      .replace('can you', '')
+      .replace('could you', '')
+      .replace('would you', '')
+      .replace('i want', '')
+      .trim();
+
+    // Check for specific Spotify songs based on user request
+    if (cleanedText.includes('pal pal')) {
+      const spotifyUrl = 'https://open.spotify.com/track/2B8KZdmZqmmkTU3rK5w02O'; // Pal Pal song
+      const newWindow = window.open(spotifyUrl, '_blank');
+      if (!newWindow) {
+        addAiMessage("Spotify blocked popup. Please check your browser settings or click the link manually.", 'system');
+      }
+      const response = "Playing Pal Pal on Spotify, Sir. Enjoy the music! Opening in new tab...";
+      return { type: 'direct', response, query: 'Pal Pal' };
+    } else if (cleanedText.includes('game on')) {
+      const spotifyUrl = 'https://open.spotify.com/track/5Ch0kN2Yq9kq6C18uBPfbq'; // Game On song
+      const newWindow = window.open(spotifyUrl, '_blank');
+      if (!newWindow) {
+        addAiMessage("Spotify blocked popup. Please check your browser settings or click the link manually.", 'system');
+      }
+      const response = "Playing Game On on Spotify, Sir. Enjoy the beats! Opening in new tab...";
+      return { type: 'direct', response, query: 'Game On' };
+    } else if (cleanedText.includes('life')) {
+      const spotifyUrl = 'https://open.spotify.com/track/23x6WgYKq918Y60Yx51q29'; // Life song
+      const newWindow = window.open(spotifyUrl, '_blank');
+      if (!newWindow) {
+        addAiMessage("Spotify blocked popup. Please check your browser settings or click the link manually.", 'system');
+      }
+      const response = "Playing Life on Spotify, Sir. Enjoy the music! Opening in new tab...";
+      return { type: 'direct', response, query: 'Life' };
+    } else if (cleanedText.includes('yalgaar')) {
+      const spotifyUrl = 'https://open.spotify.com/track/0l2aJ7JZq3Qq3YGhGFs8N8'; // YalGaar song
+      const newWindow = window.open(spotifyUrl, '_blank');
+      if (!newWindow) {
+        addAiMessage("Spotify blocked popup. Please check your browser settings or click the link manually.", 'system');
+      }
+      const response = "Playing YalGaar on Spotify, Sir. Enjoy the music! Opening in new tab...";
+      return { type: 'direct', response, query: 'YalGaar' };
+    }
+
+    // If no direct match, perform search
+    if (cleanedText) {
+      searchQuery = cleanedText;
+    } else {
+      searchQuery = 'top hits';
+    }
+
+    const encodedQuery = encodeURIComponent(searchQuery);
+    const spotifyUrl = `https://open.spotify.com/search/${encodedQuery}`;
+    const newWindow = window.open(spotifyUrl, '_blank');
+    
+    if (!newWindow) {
+      addAiMessage("Spotify blocked popup. Please check your browser settings.", 'system');
+    }
+
+    return {
+      type: 'search',
+      response: `Searching Spotify for "${searchQuery}", Sir. Opening in new tab...`,
+      query: searchQuery
+    };
+  };
+
   const handleUserMessage = async (originalUserText) => {
     if (!originalUserText.trim() || !isLanguageSelected) return;
 
@@ -968,6 +1081,31 @@ function Home() {
       speakTextIfAllowed(response, selectedLanguage);
       saveToHistory(originalUserText, response);
       return;
+    }
+    
+    // Check if user is responding to platform preference query
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage && lastMessage.text && lastMessage.text.includes("Would you like to play it on YouTube or Spotify")) {
+      const normalizedResponse = originalUserText.toLowerCase().trim();
+      
+      // Check if user wants YouTube
+      if (normalizedResponse.includes('youtube') || normalizedResponse.includes('youtub')) {
+        // Process as YouTube request
+        const result = handleYouTubeRequest(originalUserText);
+        addAiMessage(result.response, 'youtube');
+        speakTextIfAllowed(result.response, selectedLanguage);
+        saveToHistory(originalUserText, result.response);
+        return;
+      }
+      // Check if user wants Spotify
+      else if (normalizedResponse.includes('spotify')) {
+        // Process as Spotify request
+        const result = handleSpotifyRequest(originalUserText);
+        addAiMessage(result.response, 'spotify');
+        speakTextIfAllowed(result.response, selectedLanguage);
+        saveToHistory(originalUserText, result.response);
+        return;
+      }
     }
 
     // Process AI name extraction
@@ -1080,6 +1218,38 @@ function Home() {
       }
     }
 
+    // Spotify requests - Check for Spotify-specific commands first
+    if ((normalized.includes('play') ||
+        normalized.includes('spotify') ||
+        normalized.includes('song') ||
+        normalized.includes('music')) &&
+        (normalized.includes('on spotify') || normalized.includes('play on spotify') ||
+         normalized.includes('open spotify') || normalized.includes('from spotify'))) {
+      console.log(`Spotify command detected: ${processedUserText}`);
+      const result = handleSpotifyRequest(processedUserText);
+      addAiMessage(result.response, 'spotify');
+      speakTextIfAllowed(result.response, selectedLanguage);
+      saveToHistory(processedUserText, result.response);
+      return;
+    }
+    
+    // Check if user wants to play specific songs and asks if they prefer YouTube or Spotify
+    const specificSongKeywords = ['pal pal', 'game on', 'life', 'yalgaar'];
+    const hasSpecificSong = specificSongKeywords.some(song => normalized.includes(song));
+    
+    if (hasSpecificSong && (normalized.includes('play') || normalized.includes('song') || 
+                           normalized.includes('music') || normalized.includes('game on'))) {
+      // Check if user hasn't specified platform preference
+      if (!normalized.includes('on youtube') && !normalized.includes('on spotify') && 
+          !normalized.includes('from youtube') && !normalized.includes('from spotify')) {
+        // Ask user which platform they prefer
+        const response = "I found a specific song you requested. Would you like to play it on YouTube or Spotify, Sir?";
+        addAiMessage(response, 'system');
+        speakTextIfAllowed(response, selectedLanguage);
+        return;
+      }
+    }
+    
     // YouTube/Video requests - Only if NOT an 'open youtube' command
     if ((normalized.includes('play') ||
         normalized.includes('youtube') ||
@@ -1089,7 +1259,8 @@ function Home() {
         normalized.includes('music') ||
         normalized.includes('watch') ||
         normalized.includes('game on')) &&
-        !normalized.includes('open youtube') && !normalized.includes('launch youtube')) {
+        !normalized.includes('open youtube') && !normalized.includes('launch youtube') &&
+        !normalized.includes('on spotify') && !normalized.includes('from spotify')) {
       console.log(`YouTube command detected: ${processedUserText}`);
       const result = handleYouTubeRequest(processedUserText);
       addAiMessage(result.response, 'youtube');
@@ -1254,6 +1425,7 @@ function Home() {
   const determineHistoryType = (query) => {
     const normalized = query.toLowerCase();
     if (normalized.includes('play') || normalized.includes('youtube')) return 'video';
+    if (normalized.includes('spotify')) return 'spotify';
     if (normalized.includes('search') || normalized.includes('google')) return 'search';
     if (normalized.includes('read about') || normalized.includes('information about') || normalized.includes('explain about')) return 'info';
     if (normalized.includes('open') || normalized.includes('launch')) return 'app';
