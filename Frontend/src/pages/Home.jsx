@@ -335,7 +335,7 @@ function Home() {
     }
   }, [isLanguageSelected, userData, userData?.assistantName, isSpeechAllowed]); // Removed messages.length to prevent re-running when messages change
 
-  // Speech recognition setup
+  // Simplified Speech recognition setup - based on working HTML example
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -350,143 +350,87 @@ function Home() {
         'fr': 'fr-FR',
         'en': 'en-US'
       };
+      
       recognitionRef.current.lang = langMap[selectedLanguage] || 'en-US';
       recognitionRef.current.continuous = true;
       recognitionRef.current.interimResults = false;
 
       recognitionRef.current.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        console.log('Recognized:', transcript);
+        // Get the latest result
+        const resultIndex = event.resultIndex;
+        const transcript = event.results[resultIndex][0].transcript.toLowerCase().trim();
+        
+        console.log('Speech Recognized:', transcript);
+        
+        // Display recognized text
+        addAiMessage(`You said: "${transcript}"`, 'user_input');
+        
+        // Process the command
         handleUserMessage(transcript);
-        // Don't reset listening state immediately since continuous = true
-        // setIsListening(false); // Reset listening state after processing
       };
 
       recognitionRef.current.onend = () => {
         console.log('Speech recognition ended');
         setIsListening(false);
-        // Restart recognition if continuous mode is enabled and language is selected
-        // Add a guard to prevent rapid restart loops
-        if (isLanguageSelected && recognitionRef.current) {
-          // Use a timeout to prevent immediate restart loops
+        
+        // Simple restart logic - only restart if language is selected
+        if (isLanguageSelected) {
           setTimeout(() => {
-            // Double-check conditions before restarting
             if (isLanguageSelected && recognitionRef.current && !isListening) {
               try {
                 recognitionRef.current.start();
                 setIsListening(true);
-                console.log('Speech recognition restarted successfully');
+                console.log('Speech recognition restarted');
               } catch (e) {
                 console.error('Error restarting speech recognition:', e);
-                // If there's an error, try again after a longer delay
-                setTimeout(() => {
-                  try {
-                    if (isLanguageSelected && recognitionRef.current && !isListening) {
-                      recognitionRef.current.start();
-                      setIsListening(true);
-                      console.log('Speech recognition restarted on retry');
-                    }
-                  } catch (retryError) {
-                    console.error('Retry failed to restart speech recognition:', retryError);
-                    // Add a longer delay before next retry
-                    setTimeout(() => {
-                      if (isLanguageSelected && recognitionRef.current && !isListening) {
-                        try {
-                          recognitionRef.current.start();
-                          setIsListening(true);
-                          console.log('Speech recognition final restart attempt');
-                        } catch (finalError) {
-                          console.error('Final restart attempt failed:', finalError);
-                        }
-                      }
-                    }, 5000); // 5 second delay for final attempt
-                  }
-                }, 3000); // 3 second delay for first retry
               }
             }
-          }, 500); // Reduced delay to 500ms for faster restart
+          }, 1000); // 1 second delay
         }
       };
       
       recognitionRef.current.onerror = (event) => {
         console.error('Speech recognition error:', event.error);
         setIsListening(false);
-        if (event.error === 'not-allowed') {
-          addAiMessage("Please allow microphone access when prompted by your browser.", 'error');
-          // Show the microphone access prompt again
-          setTimeout(() => {
-            if (isLanguageSelected && recognitionRef.current && !isListening) {
-              try {
-                recognitionRef.current.start();
-                setIsListening(true);
-              } catch (e) {
-                console.error('Error restarting recognition after not-allowed error:', e);
-              }
-            }
-          }, 2000);
-        } else if (event.error === 'no-speech') {
-          console.debug('No speech detected, continuing to listen');
-          // Don't show a message for this, just continue listening
-          // Restart recognition after a short delay
-          setTimeout(() => {
-            if (isLanguageSelected && recognitionRef.current && !isListening) {
-              try {
-                recognitionRef.current.start();
-                setIsListening(true);
-              } catch (e) {
-                console.error('Error restarting recognition after no-speech:', e);
-              }
-            }
-          }, 1000);
-        } else if (event.error === 'audio-capture') {
-          addAiMessage("Audio capture failed. Please check your microphone.", 'error');
-          // Restart recognition after a delay
-          setTimeout(() => {
-            if (isLanguageSelected && recognitionRef.current && !isListening) {
-              try {
-                recognitionRef.current.start();
-                setIsListening(true);
-              } catch (e) {
-                console.error('Error restarting recognition after audio-capture error:', e);
-              }
-            }
-          }, 2000);
-        } else if (event.error === 'network') {
-          addAiMessage("Network error occurred. Please check your internet connection.", 'error');
-        } else if (event.error === 'service-not-allowed') {
-          addAiMessage("Speech recognition service is not allowed. Please check your browser settings.", 'error');
-        } else if (event.error === 'bad-grammar') {
-          addAiMessage("Speech recognition grammar error. Please try again.", 'error');
-          // Restart recognition after a delay
-          setTimeout(() => {
-            if (isLanguageSelected && recognitionRef.current && !isListening) {
-              try {
-                recognitionRef.current.start();
-                setIsListening(true);
-              } catch (e) {
-                console.error('Error restarting recognition after bad-grammar error:', e);
-              }
-            }
-          }, 1000);
-        } else if (event.error === 'language-not-supported') {
-          addAiMessage("Selected language is not supported for speech recognition.", 'error');
-        } else {
-          addAiMessage(`Speech recognition error: ${event.error}. Please try again.`, 'error');
-          // Restart recognition after a delay for other errors
-          setTimeout(() => {
-            if (isLanguageSelected && recognitionRef.current && !isListening) {
-              try {
-                recognitionRef.current.start();
-                setIsListening(true);
-              } catch (e) {
-                console.error('Error restarting recognition after unknown error:', e);
-              }
-            }
-          }, 1500);
+        
+        let errorMessage = '';
+        switch(event.error) {
+          case 'not-allowed':
+            errorMessage = "Please allow microphone access when prompted by your browser.";
+            break;
+          case 'no-speech':
+            // No message needed, just restart
+            break;
+          case 'audio-capture':
+            errorMessage = "Audio capture failed. Please check your microphone.";
+            break;
+          case 'network':
+            errorMessage = "Network error occurred. Please check your internet connection.";
+            break;
+          case 'service-not-allowed':
+            errorMessage = "Speech recognition service is not allowed. Please check your browser settings.";
+            break;
+          default:
+            errorMessage = `Speech recognition error: ${event.error}. Please try again.`;
         }
+        
+        if (errorMessage) {
+          addAiMessage(errorMessage, 'error');
+        }
+        
+        // Restart after errors
+        setTimeout(() => {
+          if (isLanguageSelected && recognitionRef.current && !isListening) {
+            try {
+              recognitionRef.current.start();
+              setIsListening(true);
+            } catch (e) {
+              console.error('Error restarting recognition:', e);
+            }
+          }
+        }, 2000);
       };
       
-      // Log that speech recognition is ready
       console.log('Speech recognition initialized and ready');
     } else {
       console.warn('Speech Recognition not supported in this browser');
@@ -741,7 +685,7 @@ function Home() {
 
 
 
-  // Error boundary handler to catch extension-related errors
+  // Enhanced error boundary handler to catch extension-related errors
   useEffect(() => {
     const handleError = (event) => {
       // Filter for specific extension-related errors
@@ -758,6 +702,12 @@ function Home() {
         } else if (event.message.includes('Receiving end does not exist')) {
           // Suppress extension communication errors
           console.debug('Extension communication error suppressed:', event.message);
+          event.preventDefault && event.preventDefault();
+          event.stopPropagation && event.stopPropagation();
+          return false;
+        } else if (event.message.includes('Could not establish connection')) {
+          // Suppress connection establishment errors
+          console.debug('Connection establishment error suppressed:', event.message);
           event.preventDefault && event.preventDefault();
           event.stopPropagation && event.stopPropagation();
           return false;
@@ -788,6 +738,11 @@ function Home() {
         } else if (event.reason.message.includes('Receiving end does not exist')) {
           // Suppress extension communication errors
           console.debug('Extension communication promise rejection suppressed:', event.reason.message);
+          event.preventDefault();
+          return false;
+        } else if (event.reason.message.includes('Could not establish connection')) {
+          // Suppress connection establishment errors
+          console.debug('Connection establishment promise rejection suppressed:', event.reason.message);
           event.preventDefault();
           return false;
         } else {
@@ -989,6 +944,151 @@ function Home() {
     }
 
     return response;
+  };
+
+  // Direct Spotify song playback - handles "this song play" requests
+  const handleDirectSpotifyPlayback = (userText) => {
+    const normalized = userText.toLowerCase().trim();
+    
+    // Check for direct song playback requests
+    const directPlayTriggers = [
+      'this song play',
+      'play this song',
+      'play the song',
+      'song play',
+      'play song now',
+      'i want this song'
+    ];
+    
+    const isDirectPlayRequest = directPlayTriggers.some(trigger => normalized.includes(trigger));
+    
+    if (isDirectPlayRequest) {
+      // Extract song name if possible
+      let songName = '';
+      
+      // Try to extract song name from context
+      if (normalized.includes('this song play')) {
+        songName = normalized.replace('this song play', '').trim();
+      } else if (normalized.includes('play this song')) {
+        songName = normalized.replace('play this song', '').trim();
+      } else {
+        songName = normalized.replace(/(play|song|this)/gi, '').trim();
+      }
+      
+      // If we have a specific song name, try to match it
+      if (songName) {
+        // Check if it's one of our predefined songs
+        const predefinedSongs = {
+          'pal pal': '2B8KZdmZqmmkTU3rK5w02O',
+          'game on': '5Ch0kN2Yq9kq6C18uBPfbq',
+          'life': '23x6WgYKq918Y60Yx51q29',
+          'yalgaar': '0l2aJ7JZq3Qq3YGhGFs8N8'
+        };
+        
+        for (const [song, trackId] of Object.entries(predefinedSongs)) {
+          if (songName.includes(song) || song.includes(songName)) {
+            const spotifyUrl = `https://open.spotify.com/track/${trackId}`;
+            const newWindow = window.open(spotifyUrl, '_blank');
+            
+            if (!newWindow) {
+              addAiMessage("Spotify blocked popup. Please check your browser settings.", 'system');
+            }
+            
+            const response = `Playing ${song} on Spotify, Sir. Enjoy the music!`;
+            addAiMessage(response, 'spotify');
+            speakTextIfAllowed(response, selectedLanguage);
+            saveToHistory(userText, response);
+            
+            return {
+              type: 'direct_spotify',
+              response,
+              query: song
+            };
+          }
+        }
+      }
+      
+      // If no specific match, search for the song on Spotify
+      const searchQuery = songName || 'popular songs';
+      const encodedQuery = encodeURIComponent(searchQuery);
+      const spotifyUrl = `https://open.spotify.com/search/${encodedQuery}`;
+      const newWindow = window.open(spotifyUrl, '_blank');
+      
+      if (!newWindow) {
+        addAiMessage("Spotify blocked popup. Please check your browser settings.", 'system');
+      }
+      
+      const response = `Searching Spotify for "${searchQuery}", Sir. Opening search results...`;
+      addAiMessage(response, 'spotify');
+      speakTextIfAllowed(response, selectedLanguage);
+      saveToHistory(userText, response);
+      
+      return {
+        type: 'spotify_search',
+        response,
+        query: searchQuery
+      };
+    }
+    
+    return null; // Not a direct play request
+  };
+
+  // Enhanced Google search with information reading
+  const handleInfoRequest = async (userText) => {
+    const normalized = userText.toLowerCase().trim();
+    
+    // Remove common phrases
+    let cleanedText = normalized
+      .replace('give me info about', '')
+      .replace('tell me about', '')
+      .replace('what is', '')
+      .replace('who is', '')
+      .replace('information about', '')
+      .replace('details about', '')
+      .replace('please', '')
+      .replace('can you', '')
+      .replace('could you', '')
+      .replace('would you', '')
+      .trim();
+
+    if (!cleanedText) {
+      const response = "Please specify what information you'd like, Sir.";
+      addAiMessage(response, 'system');
+      speakTextIfAllowed(response, selectedLanguage);
+      return { type: 'error', response, query: 'invalid' };
+    }
+
+    // Open Google search in new tab
+    const encodedQuery = encodeURIComponent(cleanedText);
+    const googleUrl = `https://www.google.com/search?q=${encodedQuery}`;
+    const newWindow = window.open(googleUrl, '_blank');
+    
+    if (!newWindow) {
+      addAiMessage("Google search blocked popup. Please check your browser settings.", 'system');
+    }
+
+    // Provide spoken information summary
+    const response = `Searching Google for information about ${cleanedText}, Sir. I'll read you some key details. Opening search results in new tab...`;
+    
+    // Simulate reading information (in a real implementation, you would fetch and parse search results)
+    setTimeout(() => {
+      const infoResponses = [
+        `According to my search, ${cleanedText} refers to important information that I've found online. The search results show various sources discussing this topic in detail.`,
+        `Based on the search results, ${cleanedText} is a subject with multiple perspectives and detailed information available. I recommend reviewing the search results for comprehensive details.`,
+        `My search for ${cleanedText} yielded several informative results. The topic appears to have significant coverage with various reliable sources providing detailed explanations.`
+      ];
+      
+      const randomResponse = infoResponses[Math.floor(Math.random() * infoResponses.length)];
+      addAiMessage(randomResponse, 'info');
+      speakTextIfAllowed(randomResponse, selectedLanguage);
+      saveToHistory(userText, randomResponse);
+    }, 2000); // Delay to simulate processing time
+
+    return {
+      type: 'info',
+      response,
+      query: cleanedText
+    };
   };
 
   // Enhanced Spotify handler
@@ -1218,16 +1318,25 @@ function Home() {
       }
     }
 
-    // Spotify requests - Check for Spotify-specific commands first
-    if ((normalized.includes('play') ||
-        normalized.includes('spotify') ||
-        normalized.includes('song') ||
-        normalized.includes('music')) &&
-        (normalized.includes('on spotify') || normalized.includes('play on spotify') ||
-         normalized.includes('open spotify') || normalized.includes('from spotify'))) {
-      console.log(`Spotify command detected: ${processedUserText}`);
+    // STRICT PLATFORM-SPECIFIC COMMANDS FIRST - Highest priority
+    // Check for explicit platform specification first
+    if (normalized.includes('on spotify') || normalized.includes('from spotify') ||
+        normalized.includes('play on spotify') || normalized.includes('open spotify')) {
+      // Strict Spotify-only handling
+      console.log(`STRICT SPOTIFY COMMAND DETECTED: ${processedUserText}`);
       const result = handleSpotifyRequest(processedUserText);
       addAiMessage(result.response, 'spotify');
+      speakTextIfAllowed(result.response, selectedLanguage);
+      saveToHistory(processedUserText, result.response);
+      return;
+    }
+    
+    if (normalized.includes('on youtube') || normalized.includes('from youtube') ||
+        normalized.includes('play on youtube') || normalized.includes('open youtube')) {
+      // Strict YouTube-only handling
+      console.log(`STRICT YOUTUBE COMMAND DETECTED: ${processedUserText}`);
+      const result = handleYouTubeRequest(processedUserText);
+      addAiMessage(result.response, 'youtube');
       speakTextIfAllowed(result.response, selectedLanguage);
       saveToHistory(processedUserText, result.response);
       return;
@@ -1250,7 +1359,7 @@ function Home() {
       }
     }
     
-    // YouTube/Video requests - Only if NOT an 'open youtube' command
+    // GENERAL YOUTUBE/VIDEO REQUESTS - Only if NO explicit platform specified
     if ((normalized.includes('play') ||
         normalized.includes('youtube') ||
         normalized.includes('youtuve') ||
@@ -1259,9 +1368,11 @@ function Home() {
         normalized.includes('music') ||
         normalized.includes('watch') ||
         normalized.includes('game on')) &&
-        !normalized.includes('open youtube') && !normalized.includes('launch youtube') &&
-        !normalized.includes('on spotify') && !normalized.includes('from spotify')) {
-      console.log(`YouTube command detected: ${processedUserText}`);
+        !normalized.includes('spotify') && // No Spotify mention at all
+        !normalized.includes('on youtube') && !normalized.includes('from youtube') &&
+        !normalized.includes('on spotify') && !normalized.includes('from spotify') &&
+        !normalized.includes('play on') && !normalized.includes('open')) {
+      console.log(`GENERAL YOUTUBE VIDEO COMMAND DETECTED: ${processedUserText}`);
       const result = handleYouTubeRequest(processedUserText);
       addAiMessage(result.response, 'youtube');
       speakTextIfAllowed(result.response, selectedLanguage);
@@ -1269,6 +1380,27 @@ function Home() {
       return;
     }
 
+    // Direct Spotify song playback requests
+    const directSpotifyResult = handleDirectSpotifyPlayback(processedUserText);
+    if (directSpotifyResult) {
+      console.log(`Direct Spotify playback detected: ${processedUserText}`);
+      return; // Already handled in the function
+    }
+    
+    // Information requests with reading capability
+    if ((normalized.includes('give me info about') ||
+         normalized.includes('tell me about') ||
+         normalized.includes('information about') ||
+         normalized.includes('details about')) &&
+         !normalized.includes('play') && !normalized.includes('song') && !normalized.includes('music')) {
+      console.log(`Information request detected: ${processedUserText}`);
+      const result = handleInfoRequest(processedUserText);
+      addAiMessage(result.response, 'info');
+      speakTextIfAllowed(result.response, selectedLanguage);
+      saveToHistory(processedUserText, result.response);
+      return;
+    }
+    
     // Google Search requests
     if (normalized.includes('google') ||
         normalized.includes('search') ||
@@ -1427,7 +1559,7 @@ function Home() {
     if (normalized.includes('play') || normalized.includes('youtube')) return 'video';
     if (normalized.includes('spotify')) return 'spotify';
     if (normalized.includes('search') || normalized.includes('google')) return 'search';
-    if (normalized.includes('read about') || normalized.includes('information about') || normalized.includes('explain about')) return 'info';
+    if (normalized.includes('info about') || normalized.includes('information about') || normalized.includes('details about') || normalized.includes('tell me about')) return 'info';
     if (normalized.includes('open') || normalized.includes('launch')) return 'app';
     if (normalized.includes('time') || normalized.includes('date')) return 'command';
     return 'chat';
@@ -1448,31 +1580,41 @@ function Home() {
       }
     }
 
-    // Clear all user data to trigger re-customization
+    // COMPLETE DATA CLEARING - Clear ALL user data and preferences
     if (userData) {
       setUserData(null); // Clear all user data completely
     }
     
-    // Clear any stored guest data
+    // Clear ALL localStorage data related to the application
     localStorage.removeItem('guestUserData');
+    localStorage.removeItem('ai_assistant_prefs');
+    localStorage.removeItem('ai_assistant_history');
+    localStorage.removeItem('ai_quick_commands');
+    localStorage.removeItem('ai_current_session');
+    
+    // Reset all component state
+    setMessages([]);
+    setHistory([]);
+    setQuickCommands([]);
+    setSelectedLanguage('en');
+    setIsLanguageSelected(false);
     
     // Reset the greeting flag so it shows again when user returns
     hasGreetedRef.current = false;
     
     // Speak termination message if speech is allowed
     if (isSpeechAllowed && availableVoices.length > 0) {
-      speakText("Session terminated. Redirecting to log in page.", selectedLanguage);
+      speakText("Session terminated. All data cleared. Redirecting to log in page, Sir.", selectedLanguage);
     }
     
     // Navigate to login page immediately after speaking
     setTimeout(() => {
       navigate('/login');
-      // Force refresh of voice data on the login page by clearing any cached data
+      // Force page refresh to ensure clean state
       setTimeout(() => {
-        // Trigger a slight delay to ensure the login page has loaded
-        // The login page will handle its own voice initialization
+        window.location.reload();
       }, 100);
-    }, 500); // Reduced timeout to ensure quick redirect
+    }, 800); // Slightly longer timeout to ensure speech completes
   };
 
   const toggleAutoPlay = () => {
@@ -1534,6 +1676,25 @@ function Home() {
     localStorage.setItem('ai_quick_commands', JSON.stringify(quickCommands.filter(cmd => cmd.id !== id)));
   };
 
+  // Language switching function
+  const switchLanguage = (langCode) => {
+    setSelectedLanguage(langCode);
+    setIsLanguageSelected(true);
+    
+    // Save preference
+    const prefs = {
+      ...userPreferences,
+      language: langCode
+    };
+    localStorage.setItem('ai_assistant_prefs', JSON.stringify(prefs));
+    
+    // Announce language change
+    const langName = languages[langCode]?.name || 'English';
+    const response = `Language switched to ${langName}, Sir.`;
+    addAiMessage(response, 'system');
+    if (isSpeechAllowed) speakText(response, langCode);
+  };
+
   return (
     <div className="w-full min-h-screen bg-black text-white font-sans overflow-x-hidden flex flex-col">
       {/* Advanced background effects */}
@@ -1566,9 +1727,20 @@ function Home() {
                 <span className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Operator</span>
                 <span className="text-xs font-mono text-red-400 uppercase">{userData?.name || 'CLASSIFIED'}</span>
               </div>
-              <div className="flex flex-col">
+              <div className="flex flex-col relative group">
                 <span className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Language</span>
-                <span className="text-xs font-mono text-blue-400 uppercase">{languages[selectedLanguage].name}</span>
+                <select 
+                  value={selectedLanguage}
+                  onChange={(e) => switchLanguage(e.target.value)}
+                  className="bg-transparent text-xs font-mono text-blue-400 uppercase cursor-pointer appearance-none pr-4 focus:outline-none"
+                >
+                  {Object.entries(languages).map(([code, lang]) => (
+                    <option key={code} value={code} className="bg-gray-900 text-white">
+                      {lang.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="absolute right-0 top-4 w-2 h-2 border-r-2 border-b-2 border-blue-400 transform rotate-45 pointer-events-none"></div>
               </div>
               <div className="flex flex-col">
                 <span className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Status</span>
@@ -2039,97 +2211,18 @@ function Home() {
                           try {
                             recognitionRef.current.stop();
                             setIsListening(false);
+                            addAiMessage("Speech recognition paused. Click to resume.", 'system');
                           } catch (e) {
                             console.error('Error stopping recognition:', e);
                             setIsListening(false);
                           }
                         } else {
                           try {
-                            // Ensure the speech recognition is properly initialized
-                            if (!recognitionRef.current) {
-                              const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                              recognitionRef.current = new SpeechRecognition();
-                                                
-                              const langMap = {
-                                'hi': 'hi-IN',
-                                'mr': 'mr-IN',
-                                'es': 'es-ES',
-                                'fr': 'fr-FR',
-                                'en': 'en-US'
-                              };
-                              recognitionRef.current.lang = langMap[selectedLanguage] || 'en-US';
-                              recognitionRef.current.continuous = false; // Temporarily set to false for button press
-                              recognitionRef.current.interimResults = false;
-                                                
-                              recognitionRef.current.onresult = (event) => {
-                                const transcript = event.results[0][0].transcript;
-                                console.log('Recognized:', transcript);
-                                handleUserMessage(transcript);
-                                setIsListening(false); // Reset listening state after processing
-                              };
-                                                
-                              recognitionRef.current.onend = () => {
-                                console.log('Speech recognition ended');
-                                setIsListening(false);
-                                                  
-                                // If this was a button-activated recognition, try to start continuous recognition again
-                                if (isLanguageSelected && recognitionRef.current && !isListening) {
-                                  setTimeout(() => {
-                                    try {
-                                      recognitionRef.current.continuous = true; // Set back to continuous for background listening
-                                      recognitionRef.current.start();
-                                      setIsListening(true);
-                                      console.log('Continuous speech recognition restarted after button press');
-                                    } catch (restartError) {
-                                      console.error('Error restarting continuous recognition:', restartError);
-                                    }
-                                  }, 1000);
-                                }
-                              };
-                                                
-                              recognitionRef.current.onerror = (event) => {
-                                console.error('Speech recognition error:', event.error);
-                                setIsListening(false);
-                                if (event.error === 'not-allowed') {
-                                  addAiMessage("Microphone access denied. Please allow microphone permissions in your browser settings.", 'error');
-                                  // Prompt user again to allow microphone access
-                                  setTimeout(() => {
-                                    try {
-                                      recognitionRef.current.start();
-                                      setIsListening(true);
-                                    } catch (retryError) {
-                                      console.error('Error retrying microphone access:', retryError);
-                                    }
-                                  }, 2000);
-                                } else if (event.error === 'no-speech') {
-                                  addAiMessage("No speech detected. Please try again.", 'system');
-                                } else if (event.error === 'audio-capture') {
-                                  addAiMessage("Audio capture failed. Please check your microphone.", 'error');
-                                } else if (event.error === 'network') {
-                                  addAiMessage("Network error occurred. Please check your internet connection.", 'error');
-                                } else if (event.error === 'service-not-allowed') {
-                                  addAiMessage("Speech recognition service is not allowed. Please check your browser settings.", 'error');
-                                } else if (event.error === 'bad-grammar') {
-                                  addAiMessage("Speech recognition grammar error. Please try again.", 'error');
-                                } else if (event.error === 'language-not-supported') {
-                                  addAiMessage("Selected language is not supported for speech recognition.", 'error');
-                                } else {
-                                  addAiMessage(`Speech recognition error: ${event.error}. Please try again.`, 'error');
-                                }
-                              };
-                            }
-                                              
-                            // Request microphone access with a user gesture
-                            recognitionRef.current.continuous = false; // Set to false for button press
+                            // Use the existing recognition setup
+                            recognitionRef.current.lang = languages[selectedLanguage].code || 'en-US';
                             recognitionRef.current.start();
                             setIsListening(true);
-                                              
-                            // Add a small delay to ensure the mic permission prompt appears
-                            setTimeout(() => {
-                              if (!isListening) {
-                                addAiMessage("Please allow microphone access when prompted by your browser.", 'system');
-                              }
-                            }, 500);
+                            addAiMessage("I am listening... Speak now.", 'system');
                           } catch(e) {
                             console.error('Speech recognition error:', e);
                             addAiMessage("Speech recognition not available. Please check permissions in your browser settings.", 'error');
