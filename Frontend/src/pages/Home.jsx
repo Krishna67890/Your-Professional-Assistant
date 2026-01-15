@@ -373,8 +373,8 @@ function Home() {
         console.log('Speech recognition ended');
         setIsListening(false);
         
-        // Simple restart logic - only restart if language is selected
-        if (isLanguageSelected) {
+        // Simple restart logic - only restart if language is selected and button is not manually toggled
+        if (isLanguageSelected && !isListening) {  // Only restart if not manually stopped
           setTimeout(() => {
             if (isLanguageSelected && recognitionRef.current && !isListening) {
               try {
@@ -1250,6 +1250,37 @@ function Home() {
     setMessages(prev => [...prev, userMessage]);
     setInputText('');
 
+    // SPECIFIC APP OPENING COMMANDS FIRST - Handle 'open youtube' and 'open spotify' specifically
+    // Handle 'open youtube' as app opening, not as a YouTube video request
+    if (normalized.includes('open youtube') || normalized.includes('launch youtube')) {
+      // Open YouTube app directly
+      console.log(`Opening YouTube app: ${processedUserText}`);
+      const newWindow = window.open('https://www.youtube.com', '_blank');
+      if (!newWindow) {
+        addAiMessage("Popup blocked. Please check your browser settings.", 'system');
+      }
+      const response = "Opening YouTube for you, Sir.";
+      addAiMessage(response, 'app');
+      speakTextIfAllowed(response, selectedLanguage);
+      saveToHistory(processedUserText, response);
+      return;
+    }
+    
+    // Handle 'open spotify' as app opening, not as a Spotify song request
+    if (normalized.includes('open spotify') || normalized.includes('launch spotify')) {
+      // Open Spotify app directly
+      console.log(`Opening Spotify app: ${processedUserText}`);
+      const newWindow = window.open('https://open.spotify.com', '_blank');
+      if (!newWindow) {
+        addAiMessage("Popup blocked. Please check your browser settings.", 'system');
+      }
+      const response = "Opening Spotify for you, Sir.";
+      addAiMessage(response, 'app');
+      speakTextIfAllowed(response, selectedLanguage);
+      saveToHistory(processedUserText, response);
+      return;
+    }
+    
     // App opening - Check this BEFORE YouTube/Video requests to avoid conflicts
     const apps = {
       'facebook': 'https://www.facebook.com',
@@ -1272,38 +1303,12 @@ function Home() {
                            normalized.includes(`launch ${name}`) || 
                            (normalized.includes(name) && (normalized.includes('open') || normalized.includes('launch')));
       
-      // Special handling for YouTube since it can be both an app and a video player
-      if (name === 'youtube') {
-        // Check if it's a general 'open youtube' request vs a video request
-        const isVideoRequest = normalized.includes('play') || 
-                              normalized.includes('video') || 
-                              normalized.includes('song') || 
-                              normalized.includes('music') || 
-                              normalized.includes('watch') ||
-                              normalized.includes('game on');
-        
-        if (!isVideoRequest) {
-          // This is just an 'open youtube' request
-          console.log(`Opening YouTube app via voice command: ${processedUserText}`);
-          const newWindow = window.open(url, '_blank');
-          if (!newWindow) {
-            addAiMessage("Popup blocked. Please check your browser settings.", 'system');
-          }
-          const response = `Opening YouTube for you, Sir.`;
-          addAiMessage(response, 'app');
-          speakTextIfAllowed(response, selectedLanguage);
-          saveToHistory(processedUserText, response);
-          return;
-        } else {
-          // This is a video request, handle separately
-          console.log(`YouTube video command detected: ${processedUserText}`);
-          const result = handleYouTubeRequest(processedUserText);
-          addAiMessage(result.response, 'youtube');
-          speakTextIfAllowed(result.response, selectedLanguage);
-          saveToHistory(processedUserText, result.response);
-          return;
-        }
-      } else if (isOpenCommand) {
+      // Skip YouTube and Spotify as they're handled specifically above
+      if (name === 'youtube' || name === 'spotify') {
+        continue; // Skip here since they're handled above
+      }
+      
+      if (isOpenCommand) {
         // Handle other apps
         console.log(`Opening ${name} app via voice command: ${processedUserText}`);
         const newWindow = window.open(url, '_blank');
@@ -1318,11 +1323,11 @@ function Home() {
       }
     }
 
-    // STRICT PLATFORM-SPECIFIC COMMANDS FIRST - Highest priority
-    // Check for explicit platform specification first
+    // STRICT PLATFORM-SPECIFIC COMMANDS FOR SONG PLAYBACK
+    // Check for explicit platform specification for song playback
     if (normalized.includes('on spotify') || normalized.includes('from spotify') ||
-        normalized.includes('play on spotify') || normalized.includes('open spotify')) {
-      // Strict Spotify-only handling
+        normalized.includes('play on spotify')) {
+      // Strict Spotify-only handling for song requests
       console.log(`STRICT SPOTIFY COMMAND DETECTED: ${processedUserText}`);
       const result = handleSpotifyRequest(processedUserText);
       addAiMessage(result.response, 'spotify');
@@ -1332,9 +1337,9 @@ function Home() {
     }
     
     if (normalized.includes('on youtube') || normalized.includes('from youtube') ||
-        normalized.includes('play on youtube') || normalized.includes('open youtube')) {
-      // Strict YouTube-only handling
-      console.log(`STRICT YOUTUBE COMMAND DETECTED: ${processedUserText}`);
+        normalized.includes('play on youtube')) {
+      // Strict YouTube-only handling for video requests
+      console.log(`STRICT YOUTUBE VIDEO COMMAND DETECTED: ${processedUserText}`);
       const result = handleYouTubeRequest(processedUserText);
       addAiMessage(result.response, 'youtube');
       speakTextIfAllowed(result.response, selectedLanguage);
@@ -2218,11 +2223,14 @@ function Home() {
                           }
                         } else {
                           try {
-                            // Use the existing recognition setup
-                            recognitionRef.current.lang = languages[selectedLanguage].code || 'en-US';
-                            recognitionRef.current.start();
-                            setIsListening(true);
-                            addAiMessage("I am listening... Speak now.", 'system');
+                            // Check if recognition is already running to avoid the 'already started' error
+                            if (recognitionRef.current && !isListening) {
+                              // Use the existing recognition setup
+                              recognitionRef.current.lang = languages[selectedLanguage].code || 'en-US';
+                              recognitionRef.current.start();
+                              setIsListening(true);
+                              addAiMessage("I am listening... Speak now.", 'system');
+                            }
                           } catch(e) {
                             console.error('Speech recognition error:', e);
                             addAiMessage("Speech recognition not available. Please check permissions in your browser settings.", 'error');
