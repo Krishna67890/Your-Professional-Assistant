@@ -232,7 +232,7 @@ function CustomizePage1() {
               onClick={() => {
                 setActiveTab('projects');
                 if (isSpeechAllowed) {
-                  speakText("You can visit the websites like online Chicken Delivery app, GameHub, Python Course, SQL Course, C/C++ course, LinkedIn Clone, Singgers App, Sikkim Travel APP, Formula Hub, Cyber Hub, Typing Master, Little Learners Hub.");
+                  speakText("You can visit the websites like online Chicken Delivery app, GameHub, Python Course, SQL Course, C/C++ course, LinkedIn Clone, Singgers App, Sikkim Travel APP, Formula Hub, Cyber Hub, Typing Master, Little Learners Hub, YouTube Clone.");
                 }
               }}
               className={`px-6 py-3 rounded-lg font-bold transition-all ${
@@ -458,6 +458,19 @@ function CustomizePage1() {
                   onClick={() => isSpeechAllowed && speakText("Opening Little Learners Hub website")}
                 >
                   https://krishnablogy.blogspot.com/2025/08/little-lerners-hub.html
+                </a>
+              </div>
+              
+              <div className="p-4 bg-gray-800/50 rounded-xl border border-purple-500/30">
+                <h3 className="font-bold text-lg text-blue-300 mb-2">13) YouTube Clone</h3>
+                <a 
+                  href="https://krishnablogy.blogspot.com/2025/12/youtube-clone.html" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-purple-300 hover:text-purple-100 underline break-all"
+                  onClick={() => isSpeechAllowed && speakText("Opening YouTube Clone website")}
+                >
+                  https://krishnablogy.blogspot.com/2025/12/youtube-clone.html
                 </a>
               </div>
             </div>

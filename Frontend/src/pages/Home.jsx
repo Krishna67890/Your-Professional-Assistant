@@ -329,7 +329,7 @@ function Home() {
         }
       }
     }
-  }, [availableVoices, isLanguageSelected, userData, userData?.assistantName, isSpeechAllowed, messages.length]);
+  }, [isLanguageSelected, userData, userData?.assistantName, isSpeechAllowed]); // Removed messages.length to prevent re-running when messages change
 
   // Speech recognition setup
   useEffect(() => {
@@ -362,27 +362,45 @@ function Home() {
         console.log('Speech recognition ended');
         setIsListening(false);
         // Restart recognition if continuous mode is enabled and language is selected
-        if (isLanguageSelected && recognitionRef.current && !isListening) {
+        // Add a guard to prevent rapid restart loops
+        if (isLanguageSelected && recognitionRef.current) {
+          // Use a timeout to prevent immediate restart loops
           setTimeout(() => {
-            try {
-              recognitionRef.current.start();
-              setIsListening(true);
-              console.log('Speech recognition restarted');
-            } catch (e) {
-              console.error('Error restarting speech recognition:', e);
-              // If there's an error, try again after a longer delay
-              setTimeout(() => {
-                try {
-                  if (isLanguageSelected && recognitionRef.current && !isListening) {
-                    recognitionRef.current.start();
-                    setIsListening(true);
+            // Double-check conditions before restarting
+            if (isLanguageSelected && recognitionRef.current && !isListening) {
+              try {
+                recognitionRef.current.start();
+                setIsListening(true);
+                console.log('Speech recognition restarted successfully');
+              } catch (e) {
+                console.error('Error restarting speech recognition:', e);
+                // If there's an error, try again after a longer delay
+                setTimeout(() => {
+                  try {
+                    if (isLanguageSelected && recognitionRef.current && !isListening) {
+                      recognitionRef.current.start();
+                      setIsListening(true);
+                      console.log('Speech recognition restarted on retry');
+                    }
+                  } catch (retryError) {
+                    console.error('Retry failed to restart speech recognition:', retryError);
+                    // Add a longer delay before next retry
+                    setTimeout(() => {
+                      if (isLanguageSelected && recognitionRef.current && !isListening) {
+                        try {
+                          recognitionRef.current.start();
+                          setIsListening(true);
+                          console.log('Speech recognition final restart attempt');
+                        } catch (finalError) {
+                          console.error('Final restart attempt failed:', finalError);
+                        }
+                      }
+                    }, 5000); // 5 second delay for final attempt
                   }
-                } catch (retryError) {
-                  console.error('Retry failed to restart speech recognition:', retryError);
-                }
-              }, 3000);
+                }, 3000); // 3 second delay for first retry
+              }
             }
-          }, 1000); // Restart after 1 second
+          }, 500); // Reduced delay to 500ms for faster restart
         }
       };
       
@@ -407,16 +425,49 @@ function Home() {
           }, 1000);
         } else if (event.error === 'audio-capture') {
           addAiMessage("Audio capture failed. Please check your microphone.", 'error');
+          // Restart recognition after a delay
+          setTimeout(() => {
+            if (isLanguageSelected && recognitionRef.current && !isListening) {
+              try {
+                recognitionRef.current.start();
+                setIsListening(true);
+              } catch (e) {
+                console.error('Error restarting recognition after audio-capture error:', e);
+              }
+            }
+          }, 2000);
         } else if (event.error === 'network') {
           addAiMessage("Network error occurred. Please check your internet connection.", 'error');
         } else if (event.error === 'service-not-allowed') {
           addAiMessage("Speech recognition service is not allowed. Please check your browser settings.", 'error');
         } else if (event.error === 'bad-grammar') {
           addAiMessage("Speech recognition grammar error. Please try again.", 'error');
+          // Restart recognition after a delay
+          setTimeout(() => {
+            if (isLanguageSelected && recognitionRef.current && !isListening) {
+              try {
+                recognitionRef.current.start();
+                setIsListening(true);
+              } catch (e) {
+                console.error('Error restarting recognition after bad-grammar error:', e);
+              }
+            }
+          }, 1000);
         } else if (event.error === 'language-not-supported') {
           addAiMessage("Selected language is not supported for speech recognition.", 'error');
         } else {
           addAiMessage(`Speech recognition error: ${event.error}. Please try again.`, 'error');
+          // Restart recognition after a delay for other errors
+          setTimeout(() => {
+            if (isLanguageSelected && recognitionRef.current && !isListening) {
+              try {
+                recognitionRef.current.start();
+                setIsListening(true);
+              } catch (e) {
+                console.error('Error restarting recognition after unknown error:', e);
+              }
+            }
+          }, 1500);
         }
       };
       
@@ -536,12 +587,10 @@ function Home() {
             retryUtterance.pitch = 1;
             retryUtterance.volume = 1;
             
-            // Stop any ongoing speech
-            if (window.speechSynthesis.speaking) {
-              window.speechSynthesis.cancel();
+            // Only speak if no speech is currently happening
+            if (!window.speechSynthesis.speaking) {
+              window.speechSynthesis.speak(retryUtterance);
             }
-            
-            window.speechSynthesis.speak(retryUtterance);
             
             // Clean up the listener after successful speech
             window.speechSynthesis.onvoiceschanged = null;
@@ -564,9 +613,18 @@ function Home() {
       return;
     }
 
-    // Stop any ongoing speech
+    // Prevent interrupting ongoing speech when it's the same message
+    if (window.speechSynthesis.speaking && speechSynthesisRef.current.utterance && speechSynthesisRef.current.utterance.text === text) {
+      // Same message is already being spoken, don't interrupt
+      return;
+    }
+    
+    // Only speak if no speech is currently happening
     if (window.speechSynthesis.speaking) {
-      window.speechSynthesis.cancel();
+      // Don't cancel ongoing speech unless it's for a critical message
+      // For most messages, just return if speech is already happening
+      console.debug('Speech already in progress, skipping new message');
+      return;
     }
 
     try {
@@ -634,7 +692,7 @@ function Home() {
       // Add small delay to prevent race conditions
       setTimeout(() => {
         try {
-          // Double-check that no speech is happening before speaking
+          // Only speak if no speech is currently happening
           if (!window.speechSynthesis.speaking) {
             window.speechSynthesis.speak(utterance);
           }
@@ -1103,7 +1161,19 @@ function Home() {
     const canSpeak = isSpeechAllowed && hasVoices;
     
     if (canSpeak) {
-      speakText(text, lang);
+      // For error messages or critical notifications, we should interrupt
+      const isErrorMessage = text.toLowerCase().includes('error') || 
+                          text.toLowerCase().includes('pemission') ||
+                          text.toLowerCase().includes('allow') ||
+                          text.toLowerCase().includes('failed');
+      
+      if (isErrorMessage || !window.speechSynthesis.speaking) {
+        // Allow critical messages to interrupt, or speak if no speech is in progress
+        speakText(text, lang);
+      } else {
+        // If speech is already happening, queue it or skip to prevent interruptions
+        console.debug('Speech already in progress, skipping non-critical message');
+      }
     } else {
       console.warn('Speech not allowed or no voices available:', { 
         isSpeechAllowed, 
@@ -1117,7 +1187,11 @@ function Home() {
         const retryHasVoices = availableVoices && availableVoices.length > 0;
         const retryCanSpeak = isSpeechAllowed && retryHasVoices;
         
-        if (retryCanSpeak) {
+        if (retryCanSpeak && (!window.speechSynthesis.speaking || 
+            text.toLowerCase().includes('error') || 
+            text.toLowerCase().includes('permission') ||
+            text.toLowerCase().includes('allow') ||
+            text.toLowerCase().includes('failed'))) {
           speakText(text, lang);
         } else {
           console.info('Retried but still no voices available, may need manual refresh or different browser');
